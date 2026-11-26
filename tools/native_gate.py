@@ -22,7 +22,7 @@ def inspect_text(dynamic, symbols):
         name, _, version = f[7].partition("@")
         version = version.lstrip("@")
         if (name.startswith(("AIBinder_", "AParcel_", "AStatus_", "ASurfaceControl_", "ASurfaceTransaction", "android_fdsan_"))
-                or name == "android_get_device_api_level"
+                or name in ("android_get_device_api_level", "AHardwareBuffer_lockPlanes", "AHardwareBuffer_lockAndGetInfo", "AHardwareBuffer_isSupported", "AHardwareBuffer_getId", "AHardwareBuffer_readFromParcel", "AHardwareBuffer_writeToParcel")
                 or re.fullmatch(r"LIBC_(?:Q|R|S|T|U|V|W|X|Y|Z)(?:_.*)?", version)
                 or version == "LIBBINDER_NDK"):
             findings.append(("BLOCK" if f[4] == "GLOBAL" else "REVIEW", f[7]))

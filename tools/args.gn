@@ -1,0 +1,10 @@
+# Experimental configuration; not validated by GN yet.
+target_os = "android"
+target_cpu = "arm64"
+default_min_sdk_version = 28
+android_ndk_api_level = 28
+is_debug = false
+is_official_build = false
+symbol_level = 1
+android_static_analysis = "on"
+use_remoteexec = false

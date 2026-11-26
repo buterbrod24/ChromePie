@@ -1,0 +1,18 @@
+name: ChromePie checks
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax checks
+        run: |
+          bash -n tools/bootstrap.sh tools/build.sh
+          python3 -m py_compile tools/check_upstream.py
+      - name: Check pinned upstream
+        run: python3 tools/check_upstream.py

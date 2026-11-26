@@ -6,6 +6,7 @@ import urllib.request
 import urllib.error
 import time
 from pathlib import Path
+from api28_encoder_guard import FACTORY, WRAPPER, GUARD, transform
 
 TAG = "159.0.8154.33"
 BASE = "https://chromium.googlesource.com/chromium/src/+/refs/tags/" + TAG + "/"
@@ -42,6 +43,15 @@ def main():
         for i, line in enumerate(fetch(path).splitlines(), 1):
             if re.search(r"min_sdk_version|min_supported_sdk_version|android_ndk_api_level|android_static_analysis|chrome_public_apk", line):
                 print(f"{i}: {line.strip()}")
+    # Validate the transformation against the exact upstream revision, without a full sync.
+    wrapper = fetch(WRAPPER.as_posix())
+    if not re.search(r"(?m)^\s*#define\s+NDK_MEDIA_CODEC_MIN_API\s+29\b", wrapper):
+        raise ValueError("Unexpected NDK encoder API requirement")
+    original = fetch(FACTORY.as_posix())
+    patched = transform(original)
+    if GUARD not in patched or transform(patched) != patched:
+        raise ValueError("Encoder guard was not applied idempotently")
+    print("Pinned encoder factory transformation: passed")
     print("Text inspection only; GN/linker/runtime verification still required.")
 
 if __name__ == "__main__":

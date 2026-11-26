@@ -27,10 +27,11 @@ gclient runhooks
 ndk="$root/src/third_party/android_toolchain/ndk"
 sdk="$root/src/third_party/android_sdk/public"
 tc="$ndk/toolchains/llvm/prebuilt/linux-x86_64"
-test -x "$tc/bin/clang"
+cc="$root/src/third_party/llvm-build/Release+Asserts/bin/clang"
+test -x "$cc"
 test -d "$tc/sysroot/usr/lib/aarch64-linux-android/28"
-grep -F '30.0.16248370' "$ndk/source.properties"
+grep -F '2@30.0.16248370' "$root/src/DEPS"
 test -f "$sdk/platforms/android-37.2/android.jar"
 test -x "$sdk/build-tools/37.0.0/apksigner"
-"$tc/bin/clang" --version
+"$cc" --version
 printf '%s\n' "$commit" > "$root/chromepie-source-commit.txt"

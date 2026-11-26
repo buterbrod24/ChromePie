@@ -12,7 +12,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Syntax checks
         run: |
-          bash -n tools/bootstrap.sh tools/build.sh
-          python3 -m py_compile tools/check_upstream.py
+          bash -n tools/bootstrap.sh
+          bash -n tools/build.sh
+          python3 -m py_compile tools/check_upstream.py tools/native_gate.py
+      - name: Native gate unit tests
+        run: python3 tools/native_gate.py --self-test
       - name: Check pinned upstream
         run: python3 tools/check_upstream.py

@@ -26,6 +26,9 @@ for patch_name in 0001-api28-hardware-buffer.patch 0002-api28-isolated-renderers
     exit 1
   fi
 done
+# Stage 28: keep the API29 encoder behind its original runtime requirement.
+python3 "$here/api28_encoder_guard.py" --self-test
+python3 "$here/api28_encoder_guard.py" "$src"
 out=out/ChromePie159_API28
 mkdir -p "$out"
 exec > >(tee -a "$out/pie-session.log") 2>&1

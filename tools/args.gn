@@ -8,3 +8,5 @@ is_official_build = false
 symbol_level = 1
 android_static_analysis = "on"
 use_remoteexec = false
+# Declared in chrome/android/chrome_public_apk_tmpl.gni at the pinned tag.
+chrome_public_manifest_package = "org.chromepie.browser"

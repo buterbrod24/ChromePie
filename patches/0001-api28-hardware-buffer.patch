@@ -1,0 +1,60 @@
+diff --git a/base/BUILD.gn b/base/BUILD.gn
+--- a/base/BUILD.gn
++++ b/base/BUILD.gn
+@@ -1402,7 +1402,10 @@
+     ]
+ 
+     if (android_ndk_api_level >= 29) {
+       deps += [ ":build_info_aidl_native" ]
++    }
++    # AHardwareBuffer handle and fence APIs are available before API 29.
++    if (android_ndk_api_level >= 28) {
+       sources += [
+         # Cronet uses lower NDK API level than is required for these files,
+         # but it doesn't need AHardwareBuffer anyway.
+diff --git a/gpu/command_buffer/service/shared_image/ahardwarebuffer_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/ahardwarebuffer_image_backing_factory.cc
+--- a/gpu/command_buffer/service/shared_image/ahardwarebuffer_image_backing_factory.cc
++++ b/gpu/command_buffer/service/shared_image/ahardwarebuffer_image_backing_factory.cc
+@@ -1518,6 +1518,10 @@
+     SharedImageUsageSet usage,
+     viz::SharedImageFormat format,
+     gfx::GpuMemoryBufferType gmb_type) {
++#if __ANDROID_API__ < 29
++  // Multi-plane CPU mapping requires AHardwareBuffer_lockPlanes (API 29).
++  return false;
++#else
+   if (format != viz::MultiPlaneFormat::kNV12) {
+     return false;
+   }
+@@ -1530,12 +1534,17 @@
+     return false;
+   }
+   return true;
+-}
+-
+-// static
+-bool AHardwareBufferImageBackingFactory::CopyNativeBufferToSharedMemoryAsync(
+-    gfx::GpuMemoryBufferHandle buffer_handle,
+-    base::UnsafeSharedMemoryRegion shared_memory) {
++#endif
++}
++
++// static
++bool AHardwareBufferImageBackingFactory::CopyNativeBufferToSharedMemoryAsync(
++    gfx::GpuMemoryBufferHandle buffer_handle,
++    base::UnsafeSharedMemoryRegion shared_memory) {
++#if __ANDROID_API__ < 29
++  // Never guess YUV plane layout or report a successful copy on Pie.
++  return false;
++#else
+   if (buffer_handle.type != gfx::ANDROID_HARDWARE_BUFFER) {
+     return false;
+   }
+@@ -1670,6 +1679,7 @@
+       static_cast<int>(dst_stride_uv.value()), size.width(), size.height());
+ 
+   return result == 0;
++#endif
+ }
+ 
+ }  // namespace gpu

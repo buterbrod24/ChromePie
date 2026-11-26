@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
-# Experimental build only. Does not publish an APK or bypass security.
+# Experimental build only; do not distribute before device testing.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 src=$(realpath "${1:?Usage: bash tools/build.sh /path/to/chromium/src [--gn-only]}")
 mode=${2:-}
 [[ -z "$mode" || "$mode" == --gn-only ]] || exit 64
 cd "$src"
-for t in gn autoninja git; do command -v "$t" >/dev/null || { echo "Missing $t"; exit 1; }; done
+for t in gn git python3; do
+  command -v "$t" >/dev/null || { echo "Missing $t"; exit 1; }
+done
+if [[ "$mode" != --gn-only ]]; then
+  for t in autoninja readelf; do
+    command -v "$t" >/dev/null || { echo "Missing $t"; exit 1; }
+  done
+fi
 [[ $(git rev-parse HEAD) == $(git rev-parse 'refs/tags/159.0.8154.33^{commit}') ]] || { echo 'Wrong upstream revision'; exit 1; }
 out=out/ChromePie159_API28
 mkdir -p "$out"
@@ -21,17 +28,11 @@ for arg in default_min_sdk_version android_ndk_api_level; do
   grep -Eq "^$arg[[:space:]]*=[[:space:]]*28[[:space:]]*$" "$out/$arg.txt" || { echo "Effective $arg not 28"; exit 1; }
 done
 gn args "$out" --list=chrome_public_manifest_package --short | tee "$out/package.txt"
-grep -Eq '^chrome_public_manifest_package[[:space:]]*=[[:space:]]*"org\.chromepie\.browser"[[:space:]]*
-autoninja -C "$out" chrome_public_apk 2>&1 | tee "$out/pie-build.log"
-apk="$out/apks/ChromePublic.apk"
-test -f "$apk"
-sha256sum "$apk" > "$out/pie-apk.sha256"
-python3 "$here/native_gate.py" "$apk" | tee "$out/pie-native-gate.json"
-echo 'Native gate passed for selected symbols only. Manifest, signing and device tests still required; do not distribute yet.'
- "$out/package.txt" || { echo "Unexpected package ID"; exit 1; }
+grep -Eq '^chrome_public_manifest_package[[:space:]]*=[[:space:]]*"org\.chromepie\.browser"[[:space:]]*$' "$out/package.txt" || { echo 'Unexpected package ID'; exit 1; }
 [[ "$mode" != --gn-only ]] || exit 0
 autoninja -C "$out" chrome_public_apk 2>&1 | tee "$out/pie-build.log"
 apk="$out/apks/ChromePublic.apk"
 test -f "$apk"
 sha256sum "$apk" > "$out/pie-apk.sha256"
-echo 'Candidate only: native imports, manifest, signing and device tests required before distribution.'
+python3 "$here/native_gate.py" "$apk" | tee "$out/pie-native-gate.json"
+echo 'Selected native checks passed. Manifest, signing and runtime tests are still required.'

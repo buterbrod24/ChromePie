@@ -44,7 +44,7 @@ jobs:
           set -euxo pipefail
           bash tools/bootstrap.sh "$RUNNER_TEMP/pie-src" 2>&1 | tee "$RUNNER_TEMP/pie-report/bootstrap.txt"
           df -h / | tee "$RUNNER_TEMP/pie-report/disk-after-sync.txt"
-      - name: Generate API28 build and compile browser
+      - name: Generate API28 build and compile browser (Binder compatibility patch)
         timeout-minutes: 210
         shell: bash
         run: |

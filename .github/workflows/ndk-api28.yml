@@ -22,25 +22,28 @@ jobs:
           printf '%s\n' 'chromium/third_party/android_toolchain/android_toolchain/linux-amd64 -33zVUIjuaq6ZsJfN7ldhELUrkVuY1knWj8x7E500i0C' > "$RUNNER_TEMP/ndk.ensure"
           cipd ensure -root "$RUNNER_TEMP/chromium-ndk" -ensure-file "$RUNNER_TEMP/ndk.ensure"
           echo "CHROMEPIE_NDK=$RUNNER_TEMP/chromium-ndk" >> "$GITHUB_ENV"
-      - name: Locate and test genuine NDK
+      - name: Download pinned Chromium Clang and Android runtimes
+        shell: bash
+        run: |
+          set -euxo pipefail
+          src="$RUNNER_TEMP/clang-source/src"
+          mkdir -p "$src/tools/clang/scripts"
+          printf '%s\n' 'target_os = ["android"]' > "$src/.gclient"
+          curl -fLsS --retry 3 'https://raw.githubusercontent.com/chromium/chromium/159.0.8154.33/tools/clang/scripts/update.py' -o "$src/tools/clang/scripts/update.py"
+          grep -F "CLANG_REVISION = 'llvmorg-24-init-17044-gc3223914'" "$src/tools/clang/scripts/update.py"
+          python3 "$src/tools/clang/scripts/update.py" --host-os linux --output-dir "$RUNNER_TEMP/chromium-clang"
+          echo "CHROMEPIE_CLANG=$RUNNER_TEMP/chromium-clang" >> "$GITHUB_ENV"
+      - name: Compile and link with Chromium Clang and API28 NDK
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p ndk-report
-          df -h | tee ndk-report/disk.txt
-          find "$CHROMEPIE_NDK" -maxdepth 8 \( -name clang -o -name clang-\* -o -name source.properties -o -name aarch64-linux-android -o -name sysroot \) -print | tee ndk-report/layout.txt
-          tc=''
-          while IFS= read -r candidate; do
-            root="$(dirname "$(dirname "$candidate")")"
-            if [[ -x "$candidate" && -d "$root/sysroot/usr/lib/aarch64-linux-android" ]]; then
-              tc="$root"
-              break
-            fi
-          done < <(find "$CHROMEPIE_NDK" -name clang -print)
-          test -n "$tc"
-          ls -la "$tc/sysroot/usr/lib/aarch64-linux-android" | tee ndk-report/api-dirs.txt
-          "$tc/bin/clang" --version | tee ndk-report/clang.txt
-          "$tc/bin/clang" --target=aarch64-linux-android28 --print-sysroot | tee ndk-report/sysroot.txt
+          tc="$CHROMEPIE_NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          cc="$CHROMEPIE_CLANG/bin/clang"
+          test -d "$tc/sysroot/usr/lib/aarch64-linux-android/28"
+          test -x "$cc"
+          "$cc" --version | tee ndk-report/clang.txt
+          ls -la "$tc/sysroot/usr/lib/aarch64-linux-android/28" > ndk-report/api28-libs.txt
           cat > ndk-report/api28.c <<'EOF'
           #include <android/hardware_buffer.h>
           #if __ANDROID_API__ != 28
@@ -48,11 +51,11 @@ jobs:
           #endif
           void pie_acquire(AHardwareBuffer* b) { AHardwareBuffer_acquire(b); }
           EOF
-          "$tc/bin/clang" --target=aarch64-linux-android28 --sysroot="$tc/sysroot" -fPIC -shared -Wl,--no-undefined ndk-report/api28.c -landroid -o ndk-report/libapi28.so
+          "$cc" --target=aarch64-linux-android28 --sysroot="$tc/sysroot" -fuse-ld=lld -fPIC -shared -Wl,--no-undefined ndk-report/api28.c -landroid -o ndk-report/libapi28.so
           readelf -h -d -Ws ndk-report/libapi28.so > ndk-report/elf.txt
           grep -q AArch64 ndk-report/elf.txt
           grep -q AHardwareBuffer_acquire ndk-report/elf.txt
-          echo 'Pinned NDK API 28 smoke link passed (not a Chromium build).' | tee ndk-report/result.txt
+          echo 'Chromium Clang + NDK API 28 smoke link passed (not a Chromium build).' | tee ndk-report/result.txt
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4

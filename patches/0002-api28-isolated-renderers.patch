@@ -1,0 +1,104 @@
+diff --git a/content/public/android/java/src/org/chromium/content/browser/ChildProcessLauncherHelperImpl.java b/content/public/android/java/src/org/chromium/content/browser/ChildProcessLauncherHelperImpl.java
+--- a/content/public/android/java/src/org/chromium/content/browser/ChildProcessLauncherHelperImpl.java
++++ b/content/public/android/java/src/org/chromium/content/browser/ChildProcessLauncherHelperImpl.java
+@@ -7,6 +7,7 @@
+ import static org.chromium.build.NullUtil.assumeNonNull;
+ 
+ import android.content.Context;
++import android.os.Build;
+ import android.os.Bundle;
+ import android.os.Handler;
+ import android.os.IBinder;
+@@ -72,6 +73,8 @@
+ 
+     // Manifest values used to specify the service names.
+     private static final String NUM_PRIVILEGED_SERVICES_KEY =
+             "org.chromium.content.browser.NUM_PRIVILEGED_SERVICES";
++    private static final String NUM_SANDBOXED_SERVICES_KEY =
++            "org.chromium.content.browser.NUM_SANDBOXED_SERVICES";
+ 
+     // When decrementing the refcount on bindings, delay the decrement by this amount of time in
+@@ -451,6 +454,7 @@
+         if (sandboxed && !sCheckedServiceGroupImportance) {
+             sCheckedServiceGroupImportance = true;
+-            if (sSandboxedChildConnectionRanking != null
++            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
++                    && sSandboxedChildConnectionRanking != null
+                     && ChildProcessLauncherHelperImplJni.get().serviceGroupImportanceEnabled()) {
+                 sSandboxedChildConnectionRanking.enableServiceGroupImportance();
+             }
+@@ -674,8 +678,22 @@
+                                 bindToCaller,
+                                 bindAsExternalService,
+                                 /* fallbackToNextSlot= */ false,
+                                 sandboxed);
++            } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
++                // Pie requires distinct manifest-declared isolated services.
++                connectionAllocator =
++                        ChildConnectionAllocator.create(
++                                context,
++                                LauncherThread.getHandler(),
++                                freeSlotRunnable,
++                                packageName,
++                                SandboxedProcessService.class.getName(),
++                                NUM_SANDBOXED_SERVICES_KEY,
++                                bindToCaller,
++                                bindAsExternalService,
++                                /* fallbackToNextSlot= */ false,
++                                sandboxed);
+             } else {
+                 final int maxIsolatedServices;
+                 if (SysUtils.hasLargeProcessCountSupport()
+                         && ContentFeatureList.sSandboxedProcessServiceLimitOnAndroid.isEnabled()) {
+diff --git a/chrome/android/java/AndroidManifest.xml b/chrome/android/java/AndroidManifest.xml
+--- a/chrome/android/java/AndroidManifest.xml
++++ b/chrome/android/java/AndroidManifest.xml
+@@ -1357,6 +1357,9 @@
+       <!-- NOTE: If you change the value of "android:process" for the below services,
+            you also need to update kHelperProcessExecutableName in chrome_constants.cc. -->
+-      {% for i in range(2) %}
++      {% set num_sandboxed_services = 16 %}
++      <meta-data android:name="org.chromium.content.browser.NUM_SANDBOXED_SERVICES"
++          android:value="{{ num_sandboxed_services }}"/>
++      {% for i in range(num_sandboxed_services) %}
+       <service android:name="org.chromium.content.app.SandboxedProcessService{{ i }}"
+           android:process=":sandboxed_process{{ i }}"
+           android:permission="{{ manifest_package }}.permission.CHILD_SERVICE"
+diff --git a/content/public/android/BUILD.gn b/content/public/android/BUILD.gn
+--- a/content/public/android/BUILD.gn
++++ b/content/public/android/BUILD.gn
+@@ -54,8 +54,8 @@
+   _rebased_srcjar_path = rebase_path(_srcjar_path, root_build_dir)
+ 
+   args = [
+-    "2",
++    "16",
+     _rebased_srcjar_path,
+   ]
+   outputs = [ _srcjar_path ]
+ }
+diff --git a/base/android/java/src/org/chromium/base/process_launcher/BindService.java b/base/android/java/src/org/chromium/base/process_launcher/BindService.java
+--- a/base/android/java/src/org/chromium/base/process_launcher/BindService.java
++++ b/base/android/java/src/org/chromium/base/process_launcher/BindService.java
+@@ -62,7 +62,11 @@
+             sBinderCallCounter.mBindServiceCount++;
+         }
+         if (instanceName != null) {
++            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
++                // Do not substitute a shared binding for an isolated instance.
++                return false;
++            }
+             return context.bindIsolatedService(intent, flags, instanceName, executor, connection);
+         }
+ 
+         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.N) {
+@@ -133,6 +137,9 @@
+             sBinderCallCounter.mRebindServiceCount++;
+         }
++        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.CINNAMON_BUN) {
++            return;
++        }
+         Context.BindServiceFlags bindServiceFlags =
+                 Context.BindServiceFlags.of(sanitizeFlagsForBindServiceFlags(flags));
+         if (context == ContextUtils.getApplicationContext()
+                 && ScopedServiceBindingBatch.shouldBatchUpdate()) {

@@ -1,0 +1,55 @@
+name: Chromium 159 NDK API28
+on:
+  push:
+    paths:
+      - '.github/workflows/ndk-api28.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ndk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download pinned Chromium NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$RUNNER_TEMP/depot_tools"
+          export PATH="$RUNNER_TEMP/depot_tools:$PATH"
+          export DEPOT_TOOLS_UPDATE=0
+          mkdir -p "$RUNNER_TEMP/chromium-ndk"
+          printf '%s\n' 'chromium/third_party/android_toolchain/android_toolchain/linux-amd64 version:2@30.0.16248370' > "$RUNNER_TEMP/ndk.ensure"
+          cipd ensure -root "$RUNNER_TEMP/chromium-ndk" -ensure-file "$RUNNER_TEMP/ndk.ensure"
+          echo "CHROMEPIE_NDK=$RUNNER_TEMP/chromium-ndk" >> "$GITHUB_ENV"
+      - name: Compile and link using genuine API 28 sysroot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ndk-report
+          tc="$CHROMEPIE_NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          test -d "$tc/sysroot/usr/lib/aarch64-linux-android/28"
+          test -x "$tc/bin/clang"
+          cat "$CHROMEPIE_NDK/source.properties" | tee ndk-report/source.properties
+          grep -F '30.0.16248370' ndk-report/source.properties
+          "$tc/bin/clang" --version | tee ndk-report/clang.txt
+          cat > ndk-report/api28.c <<'EOF'
+          #include <android/hardware_buffer.h>
+          #if __ANDROID_API__ != 28
+          #error Unexpected Android API
+          #endif
+          void pie_acquire(AHardwareBuffer* b) { AHardwareBuffer_acquire(b); }
+          EOF
+          "$tc/bin/clang" --target=aarch64-linux-android28 -fPIC -shared -Wl,--no-undefined ndk-report/api28.c -landroid -o ndk-report/libapi28.so
+          readelf -h -d -Ws ndk-report/libapi28.so > ndk-report/elf.txt
+          grep -q AArch64 ndk-report/elf.txt
+          grep -q AHardwareBuffer_acquire ndk-report/elf.txt
+          echo 'Pinned NDK API 28 smoke link passed (not a Chromium build).' | tee ndk-report/result.txt
+      - name: Upload small test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndk-api28-report
+          path: ndk-report/
+          if-no-files-found: ignore
+          retention-days: 3

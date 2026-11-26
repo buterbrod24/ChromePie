@@ -10,7 +10,7 @@ for t in gn git python3; do
   command -v "$t" >/dev/null || { echo "Missing $t"; exit 1; }
 done
 if [[ "$mode" != --gn-only ]]; then
-  for t in autoninja readelf; do
+  for t in autoninja ninja readelf; do
     command -v "$t" >/dev/null || { echo "Missing $t"; exit 1; }
   done
 fi
@@ -41,6 +41,33 @@ done
 gn args "$out" --list=chrome_public_manifest_package --short | tee "$out/package.txt"
 grep -Eq '^chrome_public_manifest_package[[:space:]]*=[[:space:]]*"org\.chromepie\.browser"[[:space:]]*$' "$out/package.txt" || { echo 'Unexpected package ID'; exit 1; }
 [[ "$mode" != --gn-only ]] || exit 0
+# Compile the two translation units that blocked Build 002 before the full APK.
+# The Ninja graph is authoritative: never guess GN target labels or object paths.
+mkdir -p "$out/pie-media-source"
+for f in media/gpu/BUILD.gn media/gpu/gpu_video_encode_accelerator_factory.cc media/gpu/android/BUILD.gn media/gpu/android/ndk_video_encode_accelerator.cc media/gpu/android/ndk_video_encode_accelerator.h; do
+  if [[ -f "$f" ]]; then
+    mkdir -p "$out/pie-media-source/$(dirname "$f")"
+    cp "$f" "$out/pie-media-source/$f"
+  fi
+done
+ninja -C "$out" -t targets all > "$out/pie-ninja-targets.txt"
+mapfile -t media_objects < <(awk -F ': ' '$1 ~ /(^|[\/\.])(gpu_video_encode_accelerator_factory|ndk_video_encode_accelerator)\.o$/ {print $1}' "$out/pie-ninja-targets.txt" | sort -u)
+printf '%s\n' "${media_objects[@]}" > "$out/pie-media-targets.txt"
+if ! grep -Eq '(^|[/.])gpu_video_encode_accelerator_factory\.o
+apk="$out/apks/ChromePublic.apk"
+test -f "$apk"
+sha256sum "$apk" > "$out/pie-apk.sha256"
+ndk_sysroot="$src/third_party/android_toolchain/ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+python3 "$here/ndk_symbol_audit.py" "$apk" --sysroot "$ndk_sysroot" | tee "$out/pie-ndk-symbol-audit.json"
+python3 "$here/native_gate.py" "$apk" | tee "$out/pie-native-gate.json"
+sdk="$src/third_party/android_sdk/public/build-tools/37.0.0"
+python3 "$here/apk_gate.py" "$apk" --aapt2 "$sdk/aapt2" --apksigner "$sdk/apksigner" | tee "$out/pie-apk-gate.json"
+echo 'Selected native, manifest and signature checks passed. Physical-device runtime tests are still required.'
+ "$out/pie-media-targets.txt"; then
+  echo 'Could not locate factory object in Ninja graph; inspect pie-ninja-targets.txt'
+  exit 1
+fi
+autoninja -C "$out" "${media_objects[@]}" 2>&1 | tee "$out/pie-media-preflight.log"
 autoninja -C "$out" chrome_public_apk 2>&1 | tee "$out/pie-build.log"
 apk="$out/apks/ChromePublic.apk"
 test -f "$apk"

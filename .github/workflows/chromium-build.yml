@@ -8,7 +8,7 @@ permissions:
   contents: read
 concurrency:
   group: chromium-api28-build
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   chromium:
     # Standard public runner only; never request a paid larger runner.
@@ -44,7 +44,7 @@ jobs:
           set -euxo pipefail
           bash tools/bootstrap.sh "$RUNNER_TEMP/pie-src" 2>&1 | tee "$RUNNER_TEMP/pie-report/bootstrap.txt"
           df -h / | tee "$RUNNER_TEMP/pie-report/disk-after-sync.txt"
-      - name: Build 003 preflight: compile known media blockers before APK
+      - name: Build 003 diagnostics: prioritize API28 media objects before APK
         timeout-minutes: 210
         shell: bash
         run: |

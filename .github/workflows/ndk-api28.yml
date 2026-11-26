@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - '.github/workflows/ndk-api28.yml'
+      - 'tools/ndk_symbol_audit.py'
   workflow_dispatch:
 permissions:
   contents: read

@@ -3,14 +3,26 @@
 import base64
 import re
 import urllib.request
+import urllib.error
+import time
 from pathlib import Path
 
 TAG = "159.0.8154.33"
 BASE = "https://chromium.googlesource.com/chromium/src/+/refs/tags/" + TAG + "/"
 
 def fetch(path):
-    with urllib.request.urlopen(BASE + path + "?format=TEXT", timeout=30) as response:
-        return base64.b64decode(response.read(), validate=False).decode("utf-8")
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(BASE + path + "?format=TEXT", timeout=20) as response:
+                return base64.b64decode(response.read(), validate=False).decode("utf-8")
+        except (urllib.error.URLError, TimeoutError) as exc:
+            if isinstance(exc, urllib.error.HTTPError) and exc.code not in (429, 500, 502, 503, 504):
+                raise
+            if attempt == 2:
+                raise
+            delay = 2 ** (attempt + 1)
+            print(f"Transient upstream error for {path}: {exc}; retry in {delay}s", flush=True)
+            time.sleep(delay)
 
 def check_version(text):
     values = dict(re.findall(r"^(MAJOR|MINOR|BUILD|PATCH)=(\d+)\s*$", text, re.M))

@@ -17,5 +17,7 @@ jobs:
           python3 -m py_compile tools/check_upstream.py tools/native_gate.py
       - name: Native gate unit tests
         run: python3 tools/native_gate.py --self-test
+      - name: APK gate unit tests
+        run: python3 tools/apk_gate.py --self-test
       - name: Check pinned upstream
         run: python3 tools/check_upstream.py

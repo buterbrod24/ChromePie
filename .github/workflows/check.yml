@@ -15,6 +15,8 @@ jobs:
           bash -n tools/bootstrap.sh
           bash -n tools/build.sh
           python3 -m py_compile tools/check_upstream.py tools/native_gate.py
+      - name: Android encoder guard unit tests
+        run: python3 tools/api28_encoder_guard.py --self-test
       - name: Native gate unit tests
         run: python3 tools/native_gate.py --self-test
       - name: APK gate unit tests

@@ -1,0 +1,54 @@
+name: Chromium patch integration
+on:
+  push:
+    paths:
+      - 'patches/**'
+      - '.github/workflows/patch-integration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  patches:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch exact upstream files and verify patch application
+        shell: bash
+        run: |
+          set -euxo pipefail
+          src="$RUNNER_TEMP/patch-source"
+          mkdir -p "$src"
+          git -C "$src" init -q
+          for p in patches/*.patch; do
+            while IFS= read -r path; do
+              mkdir -p "$src/$(dirname "$path")"
+              curl -fLsS --retry 3 "https://raw.githubusercontent.com/chromium/chromium/159.0.8154.33/$path" -o "$src/$path"
+            done < <(sed -n 's|^--- a/||p' "$p")
+          done
+          for p in patches/*.patch; do
+            git -C "$src" apply --check "$GITHUB_WORKSPACE/$p"
+            git -C "$src" apply "$GITHUB_WORKSPACE/$p"
+            git -C "$src" apply --reverse --check "$GITHUB_WORKSPACE/$p"
+          done
+          echo "All patches apply to pinned Chromium files."
+      - name: Check consistency of renderer pool and security attributes
+        shell: bash
+        run: |
+          python3 - "$RUNNER_TEMP/patch-source" <<'PY'
+          import pathlib, re, sys
+          src = pathlib.Path(sys.argv[1])
+          manifest = (src / 'chrome/android/java/AndroidManifest.xml').read_text()
+          gn = (src / 'content/public/android/BUILD.gn').read_text()
+          helper = (src / 'content/public/android/java/src/org/chromium/content/browser/ChildProcessLauncherHelperImpl.java').read_text()
+          pool = int(re.search(r'set num_sandboxed_services = (\d+)', manifest)[1])
+          generated = int(re.search(r'generate_sandboxed_service_srcjar"\) \{.*?args = \[\s*"(\d+)"', gn, re.S)[1])
+          assert pool == generated == 16
+          service = re.search(r'<service android:name="org.chromium.content.app.SandboxedProcessService\{\{ i \}\}"(.*?) />', manifest, re.S)[1]
+          assert 'android:isolatedProcess="true"' in service
+          assert 'android:exported="false"' in service
+          assert '.permission.CHILD_SERVICE' in service
+          assert 'Build.VERSION.SDK_INT < Build.VERSION_CODES.Q' in helper
+          assert 'NUM_SANDBOXED_SERVICES_KEY' in helper
+          print('Pool, manifest security attributes and API guard agree. Static check only.')
+          PY

@@ -95,6 +95,36 @@ jobs:
                      for x in new['unmatched_imports']), new
           print('API28 accepted; API29-only hardware buffer import detected.')
           PY
+      - name: Check Bionic device API level compatibility
+        shell: bash
+        run: |
+          set -euxo pipefail
+          tc="$CHROMEPIE_NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          cc="$CHROMEPIE_CLANG/bin/clang"
+          cat > ndk-report/bionic.c <<'EOF'
+          #include <android/api-level.h>
+          int pie_device_sdk(void) {
+            return android_get_device_api_level();
+          }
+          EOF
+          for api in 28 29; do
+            "$cc" --target="aarch64-linux-android${api}" --sysroot="$tc/sysroot" -fuse-ld=lld -unwindlib=none -Werror=unguarded-availability -O2 -fPIC -shared -Wl,--no-undefined ndk-report/bionic.c -o "ndk-report/libbionic${api}.so"
+            readelf -W --dyn-syms "ndk-report/libbionic${api}.so" > "ndk-report/bionic${api}-symbols.txt"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          from tools.ndk_symbol_audit import symbols
+          def imports(api):
+              return symbols(Path(f'ndk-report/bionic{api}-symbols.txt').read_text())[1]
+          pie, q = imports(28), imports(29)
+          assert not any(name == 'android_get_device_api_level' and binding == 'GLOBAL'
+                         for binding, name, version in pie), pie
+          assert not any(version.startswith('LIBC_Q') and binding == 'GLOBAL'
+                         for binding, name, version in pie), pie
+          print('API28 imports:', pie)
+          print('API29 imports:', q)
+          print('No strong API29 device-level dependency in the API28 fixture.')
+          PY
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4

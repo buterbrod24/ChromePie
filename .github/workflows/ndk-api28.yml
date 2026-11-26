@@ -31,7 +31,11 @@ jobs:
           src="$RUNNER_TEMP/clang-source/src"
           mkdir -p "$src/tools/clang/scripts"
           printf '%s\n' 'target_os = ["android"]' > "$src/.gclient"
-          curl -fLsS --retry 3 'https://raw.githubusercontent.com/chromium/chromium/159.0.8154.33/tools/clang/scripts/update.py' -o "$src/tools/clang/scripts/update.py"
+          if ! curl -fLsS --retry 2 --connect-timeout 20 --max-time 60 'https://raw.githubusercontent.com/chromium/chromium/159.0.8154.33/tools/clang/scripts/update.py' -o "$src/tools/clang/scripts/update.py"; then
+            echo 'GitHub mirror unavailable; fetching the same pinned tag from Chromium Gitiles.'
+            curl -fLsS --retry 3 --connect-timeout 20 --max-time 60 'https://chromium.googlesource.com/chromium/src/+/refs/tags/159.0.8154.33/tools/clang/scripts/update.py?format=TEXT' | base64 --decode > "$src/tools/clang/scripts/update.py"
+          fi
+          python3 -m py_compile "$src/tools/clang/scripts/update.py"
           grep -F "CLANG_REVISION = 'llvmorg-24-init-17044-gc3223914'" "$src/tools/clang/scripts/update.py"
           python3 "$src/tools/clang/scripts/update.py" --host-os linux --output-dir "$RUNNER_TEMP/chromium-clang"
           echo "CHROMEPIE_CLANG=$RUNNER_TEMP/chromium-clang" >> "$GITHUB_ENV"

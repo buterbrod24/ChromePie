@@ -1,0 +1,102 @@
+diff --git a/content/app/BUILD.gn b/content/app/BUILD.gn
+--- a/content/app/BUILD.gn
++++ b/content/app/BUILD.gn
+@@ -5,5 +5,9 @@
+ import("//build/config/apple/mobile_config.gni")
+ import("//build/config/chrome_build.gni")
+ import("//third_party/tflite/features.gni")
++
++if (is_android) {
++  import("//build/config/android/config.gni")
++}
+ 
+ extra_configs = [
+@@ -123,6 +127,5 @@
+       "android/content_main_android.cc",
+       "android/content_main_android.h",
+-      "android/javaless_child_process_service.cc",
+       "android/library_loader_hooks.cc",
+       "android/library_loader_hooks.h",
+     ]
+@@ -129,6 +132,11 @@
+-    deps += [
+-      "//base:build_info_aidl_native",
+-      "//base:process_launcher_aidl_native",
++    if (android_ndk_api_level >= 29) {
++      sources += [ "android/javaless_child_process_service.cc" ]
++      deps += [
++        "//base:build_info_aidl_native",
++        "//base:process_launcher_aidl_native",
++      ]
++    }
++    deps += [
+       "//content/common",
+       "//mojo/public/java/system:native_support",
+       "//ui/gl",
+diff --git a/content/public/android/java/src/org/chromium/content/browser/ChildProcessCreationParamsImpl.java b/content/public/android/java/src/org/chromium/content/browser/ChildProcessCreationParamsImpl.java
+--- a/content/public/android/java/src/org/chromium/content/browser/ChildProcessCreationParamsImpl.java
++++ b/content/public/android/java/src/org/chromium/content/browser/ChildProcessCreationParamsImpl.java
+@@ -5,7 +5,5 @@
+ package org.chromium.content.browser;
+ 
+-import android.os.Build;
+-import android.os.Bundle;
+-import android.os.Process;
++import android.os.Bundle;
+ 
+ import org.chromium.base.ContextUtils;
+@@ -107,24 +105,9 @@
+     }
+ 
+-    private static boolean isPrimaryAbi64Bit() {
+-        if (Build.SUPPORTED_ABIS.length == 0) return false;
+-        String primaryAbi = Build.SUPPORTED_ABIS[0];
+-        for (String abi : Build.SUPPORTED_64_BIT_ABIS) {
+-            if (primaryAbi.equals(abi)) return true;
+-        }
+-        return false;
+-    }
+-
+-    private static boolean isRunningInSecondaryAbi() {
+-        return Process.is64Bit() != isPrimaryAbi64Bit();
+-    }
+-
+-    private static boolean isNativeSandboxedServiceSupported() {
+-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN
+-                // Native App Zygote (/system/bin/zygote_next) is built only for the device's
+-                // primary ABI. If Chrome is running in a secondary ABI, disable native
+-                // sandboxed services to avoid dlopen failures in zygote_next.
+-                && !isRunningInSecondaryAbi();
++    private static boolean isNativeSandboxedServiceSupported() {
++        // ChromePie API 28 omits the NDK Binder-based service implementation.
++        // Keep Java-backed isolated renderers on all devices for this port.
++        return false;
+     }
+ 
+     public static boolean isNativeSandboxedServiceEnabled() {
+diff --git a/chrome/android/java/AndroidManifest.xml b/chrome/android/java/AndroidManifest.xml
+--- a/chrome/android/java/AndroidManifest.xml
++++ b/chrome/android/java/AndroidManifest.xml
+@@ -1370,21 +1370,5 @@
+           {% endif %} />
+       {% endfor %}
+-      <!-- Restricting to just 2 native-only services, one for zygote and one for non-zygote. -->
+-      {% for i in range(2) %}
+-      <service android:name="org.chromium.content.app.NativeOnlySandboxedProcessService{{ i }}"
+-          android:nativeService="true"
+-          android:process=":sandboxed_process{{ i }}"
+-          android:permission="{{ manifest_package }}.permission.CHILD_SERVICE"
+-          android:isolatedProcess="true"
+-          {% if (i == 0) %}
+-          android:useAppZygote="true"
+-          {% endif %}
+-          android:exported="false" >
+-          <property android:name="android.app.PROPERTY_NATIVE_SERVICE_LIBRARY_NAME"
+-              android:value="lib{{ library_name }}.so" />
+-          <property android:name="android.app.PROPERTY_NATIVE_SERVICE_FUNCTION_NAME"
+-              android:value="NativeChildProcessService_onCreate" />
+-      </service>
+-      {% endfor %}
++      <!-- ChromePie API 28 uses Java-backed isolated renderer services only. -->
+ 
+       {% set num_privileged_services = 10 %}

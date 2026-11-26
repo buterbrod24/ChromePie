@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
+      - uses: actions/checkout@v4
       - name: Download pinned Chromium NDK
         shell: bash
         run: |
@@ -56,6 +57,43 @@ jobs:
           grep -q AArch64 ndk-report/elf.txt
           grep -q AHardwareBuffer_acquire ndk-report/elf.txt
           echo 'Chromium Clang + NDK API 28 C-only smoke link passed (not a Chromium build; unwind not tested).' | tee ndk-report/result.txt
+      - name: Validate symbol audit on real API28 and API29 ELF files
+        shell: bash
+        run: |
+          set -euxo pipefail
+          tc="$CHROMEPIE_NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          cc="$CHROMEPIE_CLANG/bin/clang"
+          cat > ndk-report/api29.c <<'EOF'
+          #include <android/hardware_buffer.h>
+          int pie_lock(AHardwareBuffer* buffer, AHardwareBuffer_Planes* planes) {
+            return AHardwareBuffer_lockPlanes(buffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, 0, planes);
+          }
+          EOF
+          "$cc" --target=aarch64-linux-android29 --sysroot="$tc/sysroot" -fuse-ld=lld -unwindlib=none -fPIC -shared -Wl,--no-undefined ndk-report/api29.c -landroid -o ndk-report/libapi29.so
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          for api in (28, 29):
+              p = Path(f'ndk-report/libapi{api}.so')
+              # Synthetic ZIP fixture for ELF scanning only, not an installable APK.
+              with zipfile.ZipFile(f'ndk-report/api{api}-fixture.zip','w') as z:
+                  z.write(p, 'lib/arm64-v8a/' + p.name)
+          PY
+          for api in 28 29; do
+            python3 tools/ndk_symbol_audit.py "ndk-report/api${api}-fixture.zip" --sysroot "$tc/sysroot" > "ndk-report/audit-api${api}.json"
+          done
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          def load(api):
+              return json.loads(Path(f'ndk-report/audit-api{api}.json').read_text())
+          old, new = load(28), load(29)
+          assert old['strong_unmatched'] == 0, old
+          assert not old['unmatched_needed'], old
+          assert any(x['symbol'] == 'AHardwareBuffer_lockPlanes' and x['binding'] == 'GLOBAL'
+                     for x in new['unmatched_imports']), new
+          print('API28 accepted; API29-only hardware buffer import detected.')
+          PY
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4

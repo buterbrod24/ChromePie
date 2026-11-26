@@ -15,6 +15,15 @@ if [[ "$mode" != --gn-only ]]; then
   done
 fi
 [[ $(git rev-parse HEAD) == $(git rev-parse 'refs/tags/159.0.8154.33^{commit}') ]] || { echo 'Wrong upstream revision'; exit 1; }
+patch_file="$here/../patches/0001-api28-hardware-buffer.patch"
+if git apply --check "$patch_file"; then
+  git apply "$patch_file"
+elif git apply --reverse --check "$patch_file"; then
+  echo 'API28 hardware buffer patch already applied'
+else
+  echo 'Patch conflict; refusing to compile inconsistent source'
+  exit 1
+fi
 out=out/ChromePie159_API28
 mkdir -p "$out"
 exec > >(tee -a "$out/pie-session.log") 2>&1

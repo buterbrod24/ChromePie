@@ -46,4 +46,6 @@ apk="$out/apks/ChromePublic.apk"
 test -f "$apk"
 sha256sum "$apk" > "$out/pie-apk.sha256"
 python3 "$here/native_gate.py" "$apk" | tee "$out/pie-native-gate.json"
-echo 'Selected native checks passed. Manifest, signing and runtime tests are still required.'
+sdk="$src/third_party/android_sdk/public/build-tools/37.0.0"
+python3 "$here/apk_gate.py" "$apk" --aapt2 "$sdk/aapt2" --apksigner "$sdk/apksigner" | tee "$out/pie-apk-gate.json"
+echo 'Selected native, manifest and signature checks passed. Physical-device runtime tests are still required.'

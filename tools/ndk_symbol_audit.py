@@ -48,7 +48,17 @@ def scan(apk, sysroot):
         raise ValueError("Missing ARM64 API28 NDK stubs")
     stub_exports = set()
     stub_names = set()
+    non_elf_stubs = []
     for lib in sorted(api.glob("*.so")):
+        with lib.open("rb") as f:
+            magic = f.read(4)
+        if magic != b"\x7fELF":
+            if lib.name in ("libc.so", "libandroid.so"):
+                raise ValueError("Essential stub is not ELF: " + lib.name)
+            # Some NDK .so entries are linker scripts, not loadable libraries.
+            # Do not count them as runtime exports or available DT_NEEDED names.
+            non_elf_stubs.append(lib.name)
+            continue
         stub_exports.update(symbols(elf(lib, "--dyn-syms"))[0])
         stub_names.add(lib.name)
     packaged = {}
@@ -78,7 +88,7 @@ def scan(apk, sysroot):
                 unknown.append({"library":lib, "binding":binding, "symbol":name,
                                 "version":version})
     return {"api":28, "ndk_stub_count":len(stub_names),
-            "apk_libraries":sorted(packaged), "unmatched_needed":absent,
+            "apk_libraries":sorted(packaged), "non_elf_stubs":non_elf_stubs, "unmatched_needed":absent,
             "unmatched_imports":unknown,
             "strong_unmatched":sum(x["binding"] != "WEAK" for x in unknown),
             "weak_unmatched":sum(x["binding"] == "WEAK" for x in unknown),

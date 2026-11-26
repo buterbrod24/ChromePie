@@ -1,0 +1,80 @@
+name: Chromium 159 experimental API28 build
+on:
+  push:
+    paths:
+      - '.github/workflows/chromium-build.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: chromium-api28-build
+  cancel-in-progress: false
+jobs:
+  chromium:
+    # Standard public runner only; never request a paid larger runner.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - name: Measure and reclaim disk on disposable hosted runner
+        shell: bash
+        run: |
+          set -euxo pipefail
+          df -h /
+          free -h
+          nproc
+          for dir in /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost /opt/hostedtoolcache/CodeQL; do
+            if [[ -d "$dir" ]]; then
+              sudo rm -rf -- "$dir"
+            fi
+          done
+          df -h /
+          mkdir -p "$RUNNER_TEMP/pie-report"
+          df -h / > "$RUNNER_TEMP/pie-report/disk-before.txt"
+          free -h > "$RUNNER_TEMP/pie-report/memory.txt"
+          available=$(df -Pk "$RUNNER_TEMP" | awk 'END{print $4}')
+          if (( available < 100*1024*1024 )); then
+            echo "Less than 100 GiB free; stopping before Chromium checkout" | tee "$RUNNER_TEMP/pie-report/preflight.txt"
+            exit 1
+          fi
+      - name: Sync complete pinned Chromium tree and toolchains
+        timeout-minutes: 105
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash tools/bootstrap.sh "$RUNNER_TEMP/pie-src" 2>&1 | tee "$RUNNER_TEMP/pie-report/bootstrap.txt"
+          df -h / | tee "$RUNNER_TEMP/pie-report/disk-after-sync.txt"
+      - name: Generate API28 build and compile browser
+        timeout-minutes: 210
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export PATH="$RUNNER_TEMP/pie-src/depot_tools:$PATH"
+          bash tools/build.sh "$RUNNER_TEMP/pie-src/src" 2>&1 | tee "$RUNNER_TEMP/pie-report/build.txt"
+      - name: Save diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/pie-report"
+          df -h / > "$RUNNER_TEMP/pie-report/disk-final.txt"
+          out="$RUNNER_TEMP/pie-src/src/out/ChromePie159_API28"
+          for name in pie-commit.txt pie-gn.log pie-build.log pie-native-gate.json pie-apk.sha256 package.txt; do
+            if [[ -f "$out/$name" ]]; then
+              tail -c 3000000 "$out/$name" > "$RUNNER_TEMP/pie-report/$name"
+            fi
+          done
+      - name: Upload diagnostic reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromepie-build-report
+          path: ${{ runner.temp }}/pie-report/
+          retention-days: 3
+      - name: Upload experimental candidate only after successful build and native gate
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChromePie159-API28-UNTESTED
+          path: ${{ runner.temp }}/pie-src/src/out/ChromePie159_API28/apks/ChromePublic.apk
+          if-no-files-found: error
+          retention-days: 3

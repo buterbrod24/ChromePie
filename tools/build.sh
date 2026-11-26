@@ -20,6 +20,15 @@ for arg in default_min_sdk_version android_ndk_api_level; do
   gn args "$out" --list="$arg" --short | tee "$out/$arg.txt"
   grep -Eq "^$arg[[:space:]]*=[[:space:]]*28[[:space:]]*$" "$out/$arg.txt" || { echo "Effective $arg not 28"; exit 1; }
 done
+gn args "$out" --list=chrome_public_manifest_package --short | tee "$out/package.txt"
+grep -Eq '^chrome_public_manifest_package[[:space:]]*=[[:space:]]*"org\.chromepie\.browser"[[:space:]]*
+autoninja -C "$out" chrome_public_apk 2>&1 | tee "$out/pie-build.log"
+apk="$out/apks/ChromePublic.apk"
+test -f "$apk"
+sha256sum "$apk" > "$out/pie-apk.sha256"
+python3 "$here/native_gate.py" "$apk" | tee "$out/pie-native-gate.json"
+echo 'Native gate passed for selected symbols only. Manifest, signing and device tests still required; do not distribute yet.'
+ "$out/package.txt" || { echo "Unexpected package ID"; exit 1; }
 [[ "$mode" != --gn-only ]] || exit 0
 autoninja -C "$out" chrome_public_apk 2>&1 | tee "$out/pie-build.log"
 apk="$out/apks/ChromePublic.apk"

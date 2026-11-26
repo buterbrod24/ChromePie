@@ -19,5 +19,7 @@ jobs:
         run: python3 tools/native_gate.py --self-test
       - name: APK gate unit tests
         run: python3 tools/apk_gate.py --self-test
+      - name: NDK symbol audit unit tests
+        run: python3 tools/ndk_symbol_audit.py --self-test
       - name: Check pinned upstream
         run: python3 tools/check_upstream.py

@@ -44,7 +44,7 @@ jobs:
           set -euxo pipefail
           bash tools/bootstrap.sh "$RUNNER_TEMP/pie-src" 2>&1 | tee "$RUNNER_TEMP/pie-report/bootstrap.txt"
           df -h / | tee "$RUNNER_TEMP/pie-report/disk-after-sync.txt"
-      - name: Generate API28 build and compile browser (Binder compatibility patch)
+      - name: Build 003 preflight: compile known media blockers before APK
         timeout-minutes: 210
         shell: bash
         run: |
@@ -58,11 +58,17 @@ jobs:
           mkdir -p "$RUNNER_TEMP/pie-report"
           df -h / > "$RUNNER_TEMP/pie-report/disk-final.txt"
           out="$RUNNER_TEMP/pie-src/src/out/ChromePie159_API28"
-          for name in pie-commit.txt pie-gn.log pie-build.log pie-native-gate.json pie-apk.sha256 package.txt; do
+          for name in pie-commit.txt pie-gn.log pie-build.log pie-media-preflight.log pie-media-targets.txt pie-ndk-symbol-audit.json pie-native-gate.json pie-apk-gate.json pie-apk.sha256 package.txt; do
             if [[ -f "$out/$name" ]]; then
               tail -c 3000000 "$out/$name" > "$RUNNER_TEMP/pie-report/$name"
             fi
           done
+          if [[ -d "$out/pie-media-source" ]]; then
+            cp -a "$out/pie-media-source" "$RUNNER_TEMP/pie-report/"
+          fi
+          if [[ -f "$out/pie-ninja-targets.txt" ]]; then
+            grep -E "gpu_video_encode_accelerator_factory|ndk_video_encode_accelerator" "$out/pie-ninja-targets.txt" > "$RUNNER_TEMP/pie-report/media-target-matches.txt" || true
+          fi
       - name: Upload diagnostic reports
         if: always()
         uses: actions/upload-artifact@v4

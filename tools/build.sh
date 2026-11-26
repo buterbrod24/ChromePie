@@ -15,7 +15,7 @@ if [[ "$mode" != --gn-only ]]; then
   done
 fi
 [[ $(git rev-parse HEAD) == $(git rev-parse 'refs/tags/159.0.8154.33^{commit}') ]] || { echo 'Wrong upstream revision'; exit 1; }
-for patch_name in 0001-api28-hardware-buffer.patch 0002-api28-isolated-renderers.patch; do
+for patch_name in 0001-api28-hardware-buffer.patch 0002-api28-isolated-renderers.patch 0003-api28-disable-javaless-renderer.patch; do
   patch_file="$here/../patches/$patch_name"
   if git apply --check "$patch_file"; then
     git apply "$patch_file"

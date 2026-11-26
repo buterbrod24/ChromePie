@@ -51,11 +51,11 @@ jobs:
           #endif
           void pie_acquire(AHardwareBuffer* b) { AHardwareBuffer_acquire(b); }
           EOF
-          "$cc" --target=aarch64-linux-android28 --sysroot="$tc/sysroot" -fuse-ld=lld -fPIC -shared -Wl,--no-undefined ndk-report/api28.c -landroid -o ndk-report/libapi28.so
+          "$cc" --target=aarch64-linux-android28 --sysroot="$tc/sysroot" -fuse-ld=lld -unwindlib=none -fPIC -shared -Wl,--no-undefined ndk-report/api28.c -landroid -o ndk-report/libapi28.so
           readelf -h -d -Ws ndk-report/libapi28.so > ndk-report/elf.txt
           grep -q AArch64 ndk-report/elf.txt
           grep -q AHardwareBuffer_acquire ndk-report/elf.txt
-          echo 'Chromium Clang + NDK API 28 smoke link passed (not a Chromium build).' | tee ndk-report/result.txt
+          echo 'Chromium Clang + NDK API 28 C-only smoke link passed (not a Chromium build; unwind not tested).' | tee ndk-report/result.txt
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
